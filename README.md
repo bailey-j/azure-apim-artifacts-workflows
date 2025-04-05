@@ -16,5 +16,5 @@ Examples and GitHub Action Workflows that are useful to move or add either API A
 
 
 I have taken inspiration from 
-Janne [https://github.com/marketplace/actions/import-or-export-azure-api-management-developer-portal-content]
+Janne [here](https://github.com/marketplace/actions/import-or-export-azure-api-management-developer-portal-content)
 and here...
