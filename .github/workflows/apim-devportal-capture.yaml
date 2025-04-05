@@ -1,0 +1,66 @@
+name: Developer Portal Migration
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      source-environment: 
+        description: 'Environment to extract from: '
+        required: true
+        type: environment
+run-name: 'Developer Portal Config Capture: ${{github.event.inputs.source-environment}}'
+
+jobs:
+  capture:
+    name: Retrieve Existing Configurations
+    runs-on: ubuntu-latest
+    environment: ${{inputs.source-environment}}
+    env:
+      AZURE_CLIENT_ID: ${{secrets.ARM_CLIENT_ID}}
+      AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+      APIM_INSTANCE_NAME: ${{ vars.APIM_INSTANCE_NAME }}
+      OUTPUT_FOLDER_PATH: dev-portal-artifacts 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '20'
+
+      - name: Clone external repository
+        run: git clone https://github.com/Azure/api-management-developer-portal.git
+
+      - name: Install Azure Developer Portal Dependencies
+        run: npm install
+        working-directory: api-management-developer-portal
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with: 
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run Capture
+        run: |     
+          node ./devportal-migration-scripts/capture --subscriptionId  "${{ env.AZURE_SUBSCRIPTION_ID }}" --resourceGroupName "${{ env.RESOURCE_GROUP_NAME }}" --serviceName "${{ env.APIM_INSTANCE_NAME }}"  --folder "${{ env.OUTPUT_FOLDER_PATH }}/snapshot"   
+        shell: pwsh
+     
+      # GitHub Action for downloading to temporary GitHub workspace
+      # Deleted after workflow completes
+      # - name: publish artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: artifacts-from-capture
+      #     path: ${{ env.OUTPUT_FOLDER_PATH }}
+      #     if-no-files-found: error       
+
+
