@@ -1,0 +1,75 @@
+name: Developer Portal Migration
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      destination-environment: 
+        description: 'Environment to import into'
+        required: true
+        type: environment
+      redirect-url: 
+        description: 'Redirect URL'
+        required: true
+        type: string
+        default: https://devportal.com/signin
+run-name: 'Developer Portal Config Import: ${{github.event.inputs.destination-environment}}'
+
+jobs: 
+  migrate:
+    name: Migrate Configurations
+    runs-on: [ubuntu-latest]
+    environment: ${{inputs.destination-environment}}
+    env:
+      AZURE_CLIENT_ID: ${{secrets.ARM_CLIENT_ID}}
+      AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+      APIM_INSTANCE_NAME: ${{ vars.APIM_INSTANCE_NAME }}
+      OUTPUT_FOLDER_PATH: apim-devportal-artifacts 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '20'
+    
+    # Grab the repo with latest package.json
+      - name: Clone external repository
+        run: git clone https://github.com/Azure/api-management-developer-portal.git
+
+      - name: Install Azure Developer Portal Dependencies
+        run: npm install
+        working-directory: api-management-developer-portal
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with: 
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          audience: api://AzureADTokenExchange
+          allow-no-subscriptions: true
+                  
+      - name: Update Redirect URL
+        uses: restackio/update-json-file-action@2.1
+        with:
+          file: ${{ env.OUTPUT_FOLDER_PATH }}/snapshot/data.json
+          fields: "{\"/contentTypes/document/contentItems/81b0cd55-fb1a-12ee-e41a-d2d6b851ac60.properties.nodes[0].nodes[0].nodes[0].nodes[4].aadReplyUrl\": \"${{inputs.redirect-url}}\"}"
+
+      - name: Run Cleanup
+        run: |     
+          node ./devportal-migration-scripts/cleanup --subscriptionId  "${{ env.AZURE_SUBSCRIPTION_ID }}" --resourceGroupName "${{ env.RESOURCE_GROUP_NAME }}" --serviceName "${{ env.APIM_INSTANCE_NAME }}"   
+        shell: pwsh
+
+      - name: Run Import
+        run: |     
+          node ./devportal-migration-scripts/generate --subscriptionId  "${{ env.AZURE_SUBSCRIPTION_ID }}" --resourceGroupName "${{ env.RESOURCE_GROUP_NAME }}" --serviceName "${{ env.APIM_INSTANCE_NAME }}"  --folder "${{ env.OUTPUT_FOLDER_PATH }}/snapshot" --publish true   
+        shell: pwsh
+
+  
